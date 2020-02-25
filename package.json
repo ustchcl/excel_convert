@@ -1,0 +1,21 @@
+{
+  "name": "excel_parser",
+  "version": "1.0.0",
+  "description": "excel parser, c# code generator",
+  "main": "main.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "ustchcl",
+  "license": "ISC",
+  "dependencies": {
+    "@types/ramda": "^0.26.41",
+    "commander": "^4.1.1",
+    "exceljs": "^3.8.0",
+    "npm": "^6.13.7",
+    "ramda": "^0.27.0"
+  },
+  "devDependencies": {
+    "typescript": "^3.8.2"
+  }
+}
