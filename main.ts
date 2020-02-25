@@ -3,6 +3,7 @@ import * as Excel from 'exceljs';
 import * as R from 'ramda';
 import * as fs from "fs";
 import * as path from "path";
+import * as XmlJs from "xml-js";
 
 async function convert(inputFile: string, outputDir: fs.PathLike) {
     const workbook = new Excel.Workbook();
@@ -20,6 +21,24 @@ async function convert(inputFile: string, outputDir: fs.PathLike) {
     await write(outputDir + `${ClassName}Factory.cs`, result);
 }
 
+async function convertTs(inputFile: string, outputDir: fs.PathLike) {
+    const workbook = new Excel.Workbook();
+    await workbook.xlsx.readFile(inputFile);
+
+    // parser
+    var className = getClassName(workbook);
+    var ClassName = upperFirst(className);
+    var schema = getSchema(workbook);
+    var classes = genTsTypes(ClassName, schema);
+    var generatedJson = `[
+    ${getJson(workbook, inputFile)}
+    ]`;
+    var tscode = `
+${classes}
+
+export let ${className}Data: Array<${ClassName}> = ` + generatedJson;
+    await write(outputDir + `${ClassName}.ts`, tscode);
+}
 
 
 /**
@@ -82,6 +101,9 @@ function upperFirst(str: string): string {
     return str.substring(0, 1).toLocaleUpperCase() + str.substring(1, str.length);
 }
 
+///////////////////////////////////////
+/////////      C#          ////////////
+///////////////////////////////////////
 function genCSharpClass(className: string, schema: Object): string {
     var properties: string[] = [];
     var subClasses: string[] = [];
@@ -142,17 +164,26 @@ public class ${ClassName}Factory {
     return result;
 }
 
+
+//////////////////////// ts ////////////////////////
 function genTsTypes(className: string, schema: Object): string {
     var properties: string[] = [];
     var subTypes: string[] = [];
+    var typeMap = {
+        "int": "number",
+        "double": "number",
+        "float": "number",
+        "string": "string"
+    }
 
     R.forEachObjIndexed((value, key) => {
         if (value['type'] == 'array') {
             var subClassName = upperFirst(key);
             subTypes.push(genTsTypes(subClassName, value['items']['properties']));
-            properties.push(`\t${key}: Array<${subClassName}>; `);
+            properties.push(`\t${key}Array: Array<${subClassName}>; `);
         } else {
-            properties.push(`\t${key}: ${value['type']}; // ${value['description']}`);
+
+            properties.push(`\t${key}: ${typeMap[value['type']]}; // ${value['description']}`);
         }
     }, schema);
 
@@ -214,6 +245,60 @@ function getXml(workbook: Excel.Workbook, filename: string): string {
 }
 
 
+// not safe
+function getJson(workbook: Excel.Workbook, filename: string): string {
+    const meta = workbook.getWorksheet('meta');
+    const data = workbook.getWorksheet('data');
+    var fieldNameArray = meta.getColumn(2).values.filter(x => x != "转换字段名" && x != "") as Array<string>;
+    let fieldsCount = fieldNameArray.length;
+    let fieldsType = meta.getColumn(3).values.filter(x => x != "值类型" && x != "") as Array<string>;
+    var dataStr = R.range(3, data.rowCount).map(i => data.getRow(i)).filter(row => row.actualCellCount > 0).map(row => {
+        if (row.actualCellCount != fieldsCount) {
+            console.error(`[ERROR]: ${filename}`);
+            return;
+        }
+        var values = R.take(row.actualCellCount, R.drop(1, row.values as Excel.CellValue[]));
+        var jsonStr = "{";
+        var fieldFlag = ""; // 记录当前的数组
+        var objectFlag = ""; // 记录是否在item
+        R.range(0, fieldsCount).forEach(i => {
+            var fn = fieldNameArray[i];
+            var v = values[i];
+            if (fieldsType[i] == "string") {
+                v = `"${v}"`
+            }
+            if (fn.startsWith('S:')) {
+                var arr = fn.split(':');
+                if (fieldFlag == "") {   // 记录是否新开的数组
+                    fieldFlag = arr[1] + "Array";
+                    jsonStr += `"${fieldFlag}": [`
+                }
+                objectFlag = upperFirst(arr[1]);
+                var arr = fn.split(":");
+                jsonStr += `{ "${arr[2]}": ${v},`;
+            } else if (fn.startsWith('E:')) {
+                var arr = fn.split(":");
+                jsonStr += `"${arr[1]}":${v}},`;
+                objectFlag = "";
+            } else {
+                if (objectFlag != "") { // in item
+                    jsonStr += `"${fn}": ${v},`;
+                } else {
+                    if (fieldFlag != "") {
+                        jsonStr += '],';
+                        fieldFlag = "";
+                    } 
+                   jsonStr += `"${fn}":${v},`;
+                }
+            }
+        });
+        jsonStr += "}";
+        return jsonStr;
+    }).join(',');
+    return dataStr;
+}
+
+
 //////////////////////////////////////////////
 //////////    参数解析         ///////////////
 //////////////////////////////////////////////
@@ -223,6 +308,7 @@ program.version('v0.0.1');
 program.option('-d, --dir <dirpath>');
 program.option('-f, --file <filepath>');
 program.option('-o, --output <dirpath>')
+program.requiredOption('-t, --type <script>')
 
 program.parse(process.argv);
 
@@ -230,16 +316,25 @@ if (!program['output']) {
     program['output'] = "./";
 }
 
+const outputType = program['type'];
+var convertFunc = convert;
+if (outputType == "cs") {
+    convertFunc = convert;
+} else if (outputType == "ts") {
+    convertFunc = convertTs;
+} else {
+    console.error("不支持的输出类型");
+}
 
 if (program['file']) {
-    convert(program['file'], program['output']);
+    convertFunc(program['file'], program['output']);
 }
 
 if (program['dir']) {
     stepByDir(program['dir'], async (filepath) => {
         if (filepath.endsWith('xlsx')) {
             try {
-                await convert(filepath, program['output']);
+                convertFunc(filepath, program['output']);
             } catch (e) {
                 console.error(filepath);
                 console.error(e);
