@@ -3,8 +3,8 @@
 将Excel配置表转化成C#单例数据的转换器  
 或者转换成ts全部变量，带类型
 
-> 基本思路
-> xlsx  meta -> Json Schema -> Code Generator
+> 基本思路  
+> xlsx  meta -> Json Schema -> Code Generator  
 > xlsx data -> Singleton class
 
 #### usage
@@ -19,7 +19,7 @@
 
 
 ##### options
-`-t, --type` 选择输出的文件类型, 可选`cs`, `ts`两种  
-`-f, --file` 指定具体文件转化
-`-d, --dir` 递归遍历文件下所有xlsx文件，转化至
-`-o, --output` 指定输出文件夹，默认为当前目录
+`-t, --type` 选择输出的文件类型, 可选`cs`, `ts`两种    
+`-f, --file` 指定具体文件转化  
+`-d, --dir` 递归遍历文件下所有xlsx文件，转化之  
+`-o, --output` 指定输出文件夹，默认为当前目录  
